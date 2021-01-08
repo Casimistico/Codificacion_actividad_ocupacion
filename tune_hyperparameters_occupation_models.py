@@ -1,13 +1,52 @@
-"""Finds the best hyperparameters for the training model for branch of activity"""
+"""Finds the best hyperparameters for the training model for occupation code"""
+
 
 import os
 import pandas as pd
-from nltk.tokenize import RegexpTokenizer
-from nltk.stem.snowball import SpanishStemmer
-from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import CountVectorizer,TfidfTransformer
 from sklearn.linear_model import SGDClassifier
 from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from nltk.tokenize import RegexpTokenizer
+from nltk.stem.snowball import SpanishStemmer
+
+
+
+
+def get_stop_words():
+    """Gets stop words to a list"""
+    stop_words = []
+    dirname = os.path.dirname(__file__)
+    path = os.path.join(dirname, ".\data\stop_words_spanish.txt")
+    with open(path, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            stop_words.append(line.strip())
+    return stop_words
+
+
+def tokenizer_steam_words(words):
+    """Tokenizes and steams words from text"""
+    tokenizer = RegexpTokenizer(r"\w+")
+    words = tokenizer.tokenize(words)
+    stop = get_stop_words()
+    if len(words) > 1:
+        tokens = [x for x in words if x.lower() not in stop]
+    else:
+        tokens = words
+    stemer = SpanishStemmer()
+    steamed = []
+    for token in tokens:
+        steamed.append(stemer.stem(token))
+    return " ".join(steamed)
+
+
+def preprocess_text(df, column):
+    """Preprocess the data"""
+    df[column] = df[column].str.strip()
+    df[column] = df[column].apply(tokenizer_steam_words)
+    return df
 
 
 def parameter_search(df, text, label, result, index):
@@ -34,12 +73,9 @@ def parameter_search(df, text, label, result, index):
         "clf__max_iter": (10, 50, 100),
     }
 
-    try:
-        grid_search = GridSearchCV(pipeline, parameters, cv=5, n_jobs=-1, verbose=1)
-        grid_search.fit(df[text], df[label])
-    except:
-        grid_search = GridSearchCV(pipeline, parameters, cv=2, n_jobs=-1, verbose=1)
-        grid_search.fit(df[text], df[label])
+    grid_search = GridSearchCV(pipeline, parameters, cv=5, n_jobs=-1, verbose=1)
+
+    grid_search.fit(df[text], df[label])
 
     int_result = pd.DataFrame()
 
@@ -64,11 +100,10 @@ def parameter_eval_third_layer(df, df_eval):
                 select = select_third_layer_data(df, first, second, third)
                 if len(select["Cuarta"].unique()) > 1:
                     index = str(first) + str(second) + str(third)
-                    # df_eval.at[index,"indice"] = index
                     df_eval = parameter_search(
-                        select, "TEXTO_ACTIVIDAD", "Cuarta", df_eval, index
+                        select, "texto", "Cuarta", df_eval, index
                     )
-                    print("Buscado de los parametros ")
+
     return df_eval
 
 
@@ -79,9 +114,8 @@ def parameter_eval_second_layer(df, df_eval):
             select = select_second_layer_data(df, first, second)
             if len(select["Tercera"].unique()) > 1:
                 index = str(first) + str(second)
-                df_eval = parameter_search(
-                    select, "TEXTO_ACTIVIDAD", "Tercera", df_eval, index
-                )
+                # df_eval.at[index,"indice"] = index
+                df_eval = parameter_search(select, "texto", "Tercera", df_eval, index)
     return df_eval
 
 
@@ -91,64 +125,31 @@ def parameter_eval_first_layer(df, df_eval):
         select = select_first_layer_data(df, first)
         if len(select["Segunda"].unique()) > 1:
             index = str(first)
-            df_eval = parameter_search(
-                select, "TEXTO_ACTIVIDAD", "Segunda", df_eval, index
-            )
+            df_eval = parameter_search(select, "texto", "Segunda", df_eval, index)
     return df_eval
+
 
 def parameter_eval_base_layer(df, df_eval):
     """Find the best hyperparameters for the base layer"""
     index = "Base"
     print("Comienzando por la capa base")
-    df_eval = parameter_search(df, "TEXTO_ACTIVIDAD", "Primera", df_eval, index)
+    df_eval = parameter_search(df, "texto", "Primera", df_eval, index)
     print("Buscado de los parametros ")
     return df_eval
 
 
-def load_data(path_to_data=".\data\Training actividad dataset.xlsx"):
+def load_data(path_to_data=".\data\Training ocupacion dataset.xlsx"):
     """Loads the data for hypertuning"""
     df = pd.read_excel(path_to_data, engine="openpyxl")
-    df = preprocess_text(df, "TEXTO_ACTIVIDAD")
+    df = preprocess_text(df, "TEXTO_OCUPACION")
+    df["F72_2_N"] = df["CODIGO ACTIVIDAD"] / 9900  # Max de codigo actividad
+    df["texto"] = df["TEXTO_OCUPACION"]
+
+    df.drop(columns=["TEXTO_OCUPACION", "CODIGO ACTIVIDAD"], inplace=True)
     return df
 
 
-def preprocess_text(df, column):
-    """Preprocess the data"""
-    df[column] = df[column].str.strip()
-    df[column] = df[column].apply(tokenizer_steam_words)
-    return df
-
-
-def tokenizer_steam_words(words):
-    """Tokenizes and steams words from text"""
-    tokenizer = RegexpTokenizer(r"\w+")
-    words = tokenizer.tokenize(words)
-    stop = get_stop_words()
-    if len(words) > 1:
-        tokens = [x for x in words if x.lower() not in stop]
-    else:
-        tokens = words
-    stemer = SpanishStemmer()
-    steamed = []
-    for token in tokens:
-        steamed.append(stemer.stem(token))
-    return " ".join(steamed)
-
-
-def get_stop_words():
-    """Gets stop words to a list"""
-    stop_words = []
-    dirname = os.path.dirname(__file__)
-    path = os.path.join(dirname, ".\data\stop_words_spanish.txt")
-    with open(path, "r") as f:
-        lines = f.readlines()
-        for line in lines:
-            word = line.strip().replace("'", "")
-            stop_words.append(word)
-    return stop_words
-
-
-def parameter_search_all_activity_models():
+def parameter_search_all_ocupation_models():
     """Finds the best hyperparameters for the models"""
     df = load_data()
     df_eval = pd.DataFrame()
@@ -156,8 +157,8 @@ def parameter_search_all_activity_models():
     df_eval = parameter_eval_first_layer(df, df_eval)
     df_eval = parameter_eval_second_layer(df, df_eval)
     df_eval = parameter_eval_third_layer(df, df_eval)
-    path = ".\modelos_actividad\\parametros.xlsx"
-    df_eval.to_excel(path)
+    path = ".\\modelos_ocupacion\\parametros.xlsx"
+    # df_eval.to_excel(path)
 
 
 def select_first_layer_data(df, primera):
@@ -183,4 +184,4 @@ def select_third_layer_data(df, primera, segunda, tercera):
 
 
 if __name__ == "__main__":
-    parameter_search_all_activity_models()
+    parameter_search_all_ocupation_models()
